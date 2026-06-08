@@ -32,7 +32,7 @@
     "node": ">=20"
   },
   "dependencies": {
-    "@marswave/cola-plugin-sdk": "^0.0.2",
+    "@marswave/cola-plugin-sdk": "^0.0.3",
     "@xhayper/discord-rpc": "^1.3.4"
   },
   "devDependencies": {
@@ -43,7 +43,12 @@
     "plugin": {
       "id": "discord-presence",
       "entry": "./dist/index.js",
-      "minSdkVersion": "0.0.2"
+      "minSdkVersion": "0.0.3"
+    },
+    "channel": {
+      "label": "Discord Presence",
+      "description": "Discord Rich Presence observer plugin for Cola.",
+      "iconUrl": "https://cdn.simpleicons.org/discord"
     }
   }
 }
