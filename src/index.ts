@@ -93,7 +93,7 @@ class PresenceController {
   }
 
   private readonly handleEvent = (event: PluginSessionEvent): void => {
-    this.snapshot = reducePresenceEvent(this.snapshot, event)
+    this.snapshot = reducePresenceEvent(this.snapshot, event, this.config)
     this.presence?.setActivity(createActivity(this.snapshot, this.config))
   }
 }

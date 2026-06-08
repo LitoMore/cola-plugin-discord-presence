@@ -18,24 +18,37 @@ export type PresenceSnapshot = {
   sessionId?: SessionId
   origin?: PluginSessionEventOrigin
   toolName?: string
+  lastToolName?: string
+  lastToolErrored?: boolean
+  turnIndex?: number
+  toolCallIds: readonly string[]
+  recentTopic?: string
   startedAt: number
 }
 
 export function createInitialSnapshot(): PresenceSnapshot {
   return {
     phase: 'idle',
+    toolCallIds: [],
     startedAt: Date.now()
   }
 }
 
 export function reducePresenceEvent(
   snapshot: PresenceSnapshot,
-  event: PluginSessionEvent
+  event: PluginSessionEvent,
+  config: Pick<PresenceConfig, 'showTopic' | 'topicMaxLength'>
 ): PresenceSnapshot {
+  const sameSession = isSameSession(snapshot.sessionId, event.sessionId)
   const base = {
     sessionId: event.sessionId,
     origin: event.origin,
-    startedAt: snapshot.phase === 'idle' ? Date.now() : snapshot.startedAt
+    turnIndex: sameSession ? snapshot.turnIndex : undefined,
+    toolCallIds: sameSession ? snapshot.toolCallIds : [],
+    recentTopic: config.showTopic && sameSession ? snapshot.recentTopic : undefined,
+    lastToolName: sameSession ? snapshot.lastToolName : undefined,
+    lastToolErrored: sameSession ? snapshot.lastToolErrored : undefined,
+    startedAt: sameSession && snapshot.phase !== 'idle' ? snapshot.startedAt : Date.now()
   }
 
   switch (event.type) {
@@ -48,36 +61,63 @@ export function reducePresenceEvent(
     case 'compact:end':
       return { ...base, phase: 'waiting' }
     case 'turn:start':
-      return { ...base, phase: 'reading' }
+      return {
+        ...base,
+        phase: 'reading',
+        turnIndex: event.turnIndex,
+        toolName: undefined,
+        lastToolName: undefined,
+        lastToolErrored: undefined,
+        toolCallIds: []
+      }
     case 'agent:start':
       return { ...base, phase: 'thinking' }
     case 'agent:end':
     case 'turn:end':
-    case 'message:end':
       return { ...base, phase: 'waiting' }
+    case 'message:end':
+      return {
+        ...base,
+        phase: 'waiting',
+        recentTopic: config.showTopic
+          ? summarizeTopic(event.text, config.topicMaxLength) ?? base.recentTopic
+          : undefined
+      }
     case 'message:start':
       return { ...base, phase: 'replying' }
     case 'message:update':
-      return snapshot.phase === 'replying' ? snapshot : { ...base, phase: 'replying' }
+      return sameSession && snapshot.phase === 'replying' ? snapshot : { ...base, phase: 'replying' }
     case 'tool:call':
     case 'tool:execution_start':
-      return { ...base, phase: 'tool', toolName: event.toolName }
+      return {
+        ...base,
+        phase: 'tool',
+        toolName: event.toolName,
+        lastToolName: event.toolName,
+        lastToolErrored: undefined,
+        toolCallIds: appendToolCallId(base.toolCallIds, event.toolCallId)
+      }
     case 'tool:result':
     case 'tool:execution_end':
-      return { ...base, phase: 'thinking' }
+      return {
+        ...base,
+        phase: 'thinking',
+        toolName: undefined,
+        lastToolName: event.toolName,
+        lastToolErrored: event.isError
+      }
     case 'tool:execution_update':
-      return snapshot.phase === 'tool' ? snapshot : { ...base, phase: 'tool', toolName: event.toolName }
+      return sameSession && snapshot.phase === 'tool'
+        ? snapshot
+        : { ...base, phase: 'tool', toolName: event.toolName, lastToolName: event.toolName }
   }
 }
 
 export function createActivity(snapshot: PresenceSnapshot, config: PresenceConfig): SetActivity {
-  const origin = config.showOrigin && snapshot.origin ? originLabel(snapshot.origin) : undefined
-  const state = origin ?? stateForPhase(snapshot.phase)
-
   return pruneUndefined({
     name: truncate(config.activityName, 128),
     details: truncate(detailsForSnapshot(snapshot), 128),
-    state: truncate(state, 128),
+    state: truncate(stateForSnapshot(snapshot, config), 128),
     startTimestamp: new Date(snapshot.startedAt),
     largeImageKey: config.largeImageKey,
     largeImageUrl: config.largeImageUrl,
@@ -93,22 +133,42 @@ export function createActivity(snapshot: PresenceSnapshot, config: PresenceConfi
 function detailsForSnapshot(snapshot: PresenceSnapshot): string {
   switch (snapshot.phase) {
     case 'idle':
-      return 'Ready for a conversation'
+      return 'Available'
     case 'session':
-      return 'Session is active'
+      return 'In conversation'
     case 'reading':
-      return 'Reading your message'
+      return 'Reviewing context'
     case 'thinking':
-      return 'Cola is thinking'
+      return thinkingDetails(snapshot)
     case 'replying':
-      return 'Cola is replying'
+      return 'Replying'
     case 'tool':
-      return snapshot.toolName ? `Using ${snapshot.toolName}` : 'Using a tool'
+      return 'Working with tools'
     case 'compacting':
-      return 'Compacting context'
+      return 'Organizing context'
     case 'waiting':
-      return 'Waiting for you'
+      return snapshot.recentTopic ? 'Discussing' : 'In conversation'
   }
+}
+
+function stateForSnapshot(snapshot: PresenceSnapshot, config: PresenceConfig): string {
+  if (config.showTopic && snapshot.recentTopic) {
+    return snapshot.recentTopic
+  }
+
+  if (config.showOrigin && snapshot.origin) {
+    return originLabel(snapshot.origin)
+  }
+
+  return stateForPhase(snapshot.phase)
+}
+
+function thinkingDetails(snapshot: PresenceSnapshot): string {
+  if (!snapshot.lastToolName) {
+    return 'Thinking'
+  }
+
+  return snapshot.lastToolErrored ? 'Recovering from a tool error' : 'Reviewing results'
 }
 
 function stateForPhase(phase: PresencePhase): string {
@@ -142,6 +202,51 @@ function originLabel(origin: PluginSessionEventOrigin): string {
 
 function isSameSession(left: SessionId | undefined, right: SessionId): boolean {
   return Boolean(left && left.length === right.length && left.every((part, index) => part === right[index]))
+}
+
+function appendToolCallId(toolCallIds: readonly string[], toolCallId: string): readonly string[] {
+  if (toolCallIds.includes(toolCallId)) {
+    return toolCallIds
+  }
+
+  return [...toolCallIds, toolCallId].slice(-12)
+}
+
+function summarizeTopic(text: string, maxLength: number): string | undefined {
+  const normalized = normalizeTopicText(text)
+
+  if (!normalized) {
+    return undefined
+  }
+
+  const withoutLeadIn = stripLeadIn(normalized)
+  const candidates = withoutLeadIn
+    .split(/[.!?\u3002\uff01\uff1f]+/)
+    .map((part) => stripLeadIn(part).trim())
+    .filter((part) => part.length >= 6)
+
+  const topic = candidates[0] ?? withoutLeadIn
+
+  return topic ? truncate(topic, maxLength) : undefined
+}
+
+function normalizeTopicText(text: string): string {
+  return text
+    .replace(/```[\s\S]*?```/g, ' ')
+    .replace(/!\[(.*?)\]\([^)]*\)/g, '$1')
+    .replace(/\[(.*?)\]\([^)]*\)/g, '$1')
+    .replace(/`([^`]*)`/g, '$1')
+    .replace(/[#>*_~]+/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+}
+
+function stripLeadIn(text: string): string {
+  return text
+    .trim()
+    .replace(/^(sure|okay|ok|of course|absolutely|certainly|yes)[,.:;!\s-]*/i, '')
+    .replace(/^(?:\u53ef\u4ee5|\u597d\u7684|\u5f53\u7136|\u6ca1\u95ee\u9898|\u884c)[\s,\u3002\uff0c\uff1a\uff01\uff1f-]*/, '')
+    .trim()
 }
 
 function truncate(value: string, maxLength: number): string {

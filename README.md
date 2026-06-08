@@ -3,15 +3,20 @@
 Discord Rich Presence observer plugin for Cola. It subscribes to Cola session
 events and publishes the current interaction state to Discord, such as:
 
-- Ready for a conversation
-- Reading your message
-- Cola is thinking
-- Cola is replying
-- Using a tool
-- Compacting context
+- Available
+- Reviewing context
+- Thinking, or reviewing results
+- Replying
+- Working with tools
+- Organizing context
 
-The plugin does not send user prompts, assistant responses, tool inputs, or
-tool results to Discord.
+By default, the plugin does not send user prompts, full assistant responses,
+tool inputs, or tool results to Discord. It does derive a short topic from the
+latest assistant response and sends that summary directly in the Discord
+activity state.
+Set `showTopic` to `false` to disable topic summaries completely. Cola session
+events do not currently expose user prompts or conversation titles to observer
+plugins.
 
 ## Setup
 
@@ -42,6 +47,8 @@ variables where noted.
 | `largeImageText`   | string  | `Cola`                                             | Hover text for the large image.                                        |
 | `smallImageText`   | string  | `Discord Presence`                                 | Hover text for the small image.                                        |
 | `showOrigin`       | boolean | `true`                                             | Show only the origin kind, such as desktop or CLI.                     |
+| `showTopic`        | boolean | `true`                                             | Show a short topic derived from the latest assistant response. Sends that summary to Discord. |
+| `topicMaxLength`   | number  | `72`                                               | Maximum topic summary length, clamped between 20 and 120 characters.   |
 | `reconnectMs`      | number  | `15000`                                            | Retry delay when Discord is not available.                             |
 | `updateDebounceMs` | number  | `750`                                              | Minimum delay before applying presence updates.                        |
 
