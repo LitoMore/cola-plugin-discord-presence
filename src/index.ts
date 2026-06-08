@@ -1,7 +1,13 @@
 import { definePlugin } from '@marswave/cola-plugin-sdk'
-import type { PluginEventHandler, PluginSessionEvent, PluginStartContext } from '@marswave/cola-plugin-sdk'
+import type {
+  PluginEventHandler,
+  PluginSessionEvent,
+  PluginStartContext,
+  PluginTool,
+  PluginToolContext
+} from '@marswave/cola-plugin-sdk'
 
-import { createActivity, createInitialSnapshot, reducePresenceEvent } from './activity.js'
+import { applyTopicUpdate, createActivity, createInitialSnapshot, reducePresenceEvent } from './activity.js'
 import type { PresenceSnapshot } from './activity.js'
 import { readPresenceConfig } from './config.js'
 import type { PresenceConfig } from './config.js'
@@ -28,12 +34,66 @@ const EVENT_TYPES = [
 
 let controller: PresenceController | undefined
 
+const setActivityTopicTool: PluginTool = {
+  name: 'set_activity_topic',
+  label: 'Set Discord activity topic',
+  description:
+    'Update Discord Rich Presence with a short, natural public topic for the current Cola conversation. Call this whenever the user intent is clear or the topic changes.',
+  parameters: {
+    type: 'object',
+    additionalProperties: false,
+    properties: {
+      topic: {
+        type: 'string',
+        minLength: 2,
+        maxLength: 120,
+        description:
+          'A concise public topic, not a quote from the conversation. Keep it natural, neutral, and safe for Discord presence.'
+      }
+    },
+    required: ['topic']
+  },
+  promptSnippet:
+    'set_activity_topic: keep Discord Rich Presence updated with a concise public topic for the current conversation.',
+  promptGuidelines: [
+    'Call set_activity_topic once the user intent is clear, preferably before or early in your response. Call it again when the topic changes meaningfully.',
+    'Do not quote private user text. Do not include secrets, credentials, personal data, file paths, exact prompts, or sensitive details.',
+    'Use a natural 2-6 word noun phrase such as "Discord presence topics" or "Plugin build debugging"; avoid full sentences and prefixes like "Topic:".',
+    'Do not mention the presence update to the user unless they ask about Discord Presence.'
+  ],
+  async execute(input: unknown, ctx: PluginToolContext) {
+    const topic = readToolTopic(input)
+
+    if (!topic) {
+      return {
+        content: [{ type: 'text', text: 'No topic was provided.' }],
+        isError: true
+      }
+    }
+
+    if (!controller) {
+      return {
+        content: [{ type: 'text', text: 'Discord Presence is not running.' }],
+        isError: true
+      }
+    }
+
+    controller.setTopic(topic, ctx)
+
+    return {
+      content: [{ type: 'text', text: 'Discord activity topic updated.' }],
+      details: { topic }
+    }
+  }
+}
+
 export default definePlugin({
   id: 'discord-presence',
   meta: {
     label: 'Discord Presence',
     description: 'Publishes Cola interaction state to Discord Rich Presence.'
   },
+  tools: [setActivityTopicTool],
   async start(ctx) {
     const config = readPresenceConfig(ctx.config)
 
@@ -92,8 +152,31 @@ class PresenceController {
     this.presence = undefined
   }
 
+  setTopic(topic: string, ctx: PluginToolContext): void {
+    this.snapshot = applyTopicUpdate(
+      this.snapshot,
+      {
+        sessionId: ctx.sessionId,
+        scopeKey: ctx.scopeKey,
+        topic
+      },
+      this.config
+    )
+    this.presence?.setActivity(createActivity(this.snapshot, this.config))
+  }
+
   private readonly handleEvent = (event: PluginSessionEvent): void => {
     this.snapshot = reducePresenceEvent(this.snapshot, event, this.config)
     this.presence?.setActivity(createActivity(this.snapshot, this.config))
   }
+}
+
+function readToolTopic(input: unknown): string | undefined {
+  if (!input || typeof input !== 'object') {
+    return undefined
+  }
+
+  const topic = (input as { topic?: unknown }).topic
+
+  return typeof topic === 'string' && topic.trim().length > 0 ? topic : undefined
 }

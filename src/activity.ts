@@ -20,16 +20,19 @@ export type PresenceSnapshot = {
   toolName?: string
   lastToolName?: string
   lastToolErrored?: boolean
-  turnIndex?: number
-  toolCallIds: readonly string[]
   recentTopic?: string
   startedAt: number
+}
+
+export type PresenceTopicUpdate = {
+  sessionId?: SessionId
+  scopeKey: string
+  topic: string
 }
 
 export function createInitialSnapshot(): PresenceSnapshot {
   return {
     phase: 'idle',
-    toolCallIds: [],
     startedAt: Date.now()
   }
 }
@@ -37,14 +40,12 @@ export function createInitialSnapshot(): PresenceSnapshot {
 export function reducePresenceEvent(
   snapshot: PresenceSnapshot,
   event: PluginSessionEvent,
-  config: Pick<PresenceConfig, 'showTopic' | 'topicMaxLength'>
+  config: Pick<PresenceConfig, 'showTopic'>
 ): PresenceSnapshot {
   const sameSession = isSameSession(snapshot.sessionId, event.sessionId)
   const base = {
     sessionId: event.sessionId,
     origin: event.origin,
-    turnIndex: sameSession ? snapshot.turnIndex : undefined,
-    toolCallIds: sameSession ? snapshot.toolCallIds : [],
     recentTopic: config.showTopic && sameSession ? snapshot.recentTopic : undefined,
     lastToolName: sameSession ? snapshot.lastToolName : undefined,
     lastToolErrored: sameSession ? snapshot.lastToolErrored : undefined,
@@ -64,11 +65,9 @@ export function reducePresenceEvent(
       return {
         ...base,
         phase: 'reading',
-        turnIndex: event.turnIndex,
         toolName: undefined,
         lastToolName: undefined,
-        lastToolErrored: undefined,
-        toolCallIds: []
+        lastToolErrored: undefined
       }
     case 'agent:start':
       return { ...base, phase: 'thinking' }
@@ -78,10 +77,7 @@ export function reducePresenceEvent(
     case 'message:end':
       return {
         ...base,
-        phase: 'waiting',
-        recentTopic: config.showTopic
-          ? summarizeTopic(event.text, config.topicMaxLength) ?? base.recentTopic
-          : undefined
+        phase: 'waiting'
       }
     case 'message:start':
       return { ...base, phase: 'replying' }
@@ -94,8 +90,7 @@ export function reducePresenceEvent(
         phase: 'tool',
         toolName: event.toolName,
         lastToolName: event.toolName,
-        lastToolErrored: undefined,
-        toolCallIds: appendToolCallId(base.toolCallIds, event.toolCallId)
+        lastToolErrored: undefined
       }
     case 'tool:result':
     case 'tool:execution_end':
@@ -110,6 +105,37 @@ export function reducePresenceEvent(
       return sameSession && snapshot.phase === 'tool'
         ? snapshot
         : { ...base, phase: 'tool', toolName: event.toolName, lastToolName: event.toolName }
+  }
+}
+
+export function applyTopicUpdate(
+  snapshot: PresenceSnapshot,
+  update: PresenceTopicUpdate,
+  config: Pick<PresenceConfig, 'showTopic' | 'topicMaxLength'>
+): PresenceSnapshot {
+  const topic = config.showTopic ? sanitizeTopic(update.topic, config.topicMaxLength) : undefined
+
+  if (!topic) {
+    return snapshot
+  }
+
+  if (snapshot.sessionId && update.sessionId && isSameSession(snapshot.sessionId, update.sessionId)) {
+    return {
+      ...snapshot,
+      recentTopic: topic
+    }
+  }
+
+  if (!snapshot.sessionId && snapshot.origin?.kind === 'desktop' && update.scopeKey === 'desktop:local') {
+    return {
+      ...snapshot,
+      recentTopic: topic
+    }
+  }
+
+  return {
+    ...snapshot,
+    recentTopic: topic
   }
 }
 
@@ -204,28 +230,14 @@ function isSameSession(left: SessionId | undefined, right: SessionId): boolean {
   return Boolean(left && left.length === right.length && left.every((part, index) => part === right[index]))
 }
 
-function appendToolCallId(toolCallIds: readonly string[], toolCallId: string): readonly string[] {
-  if (toolCallIds.includes(toolCallId)) {
-    return toolCallIds
-  }
-
-  return [...toolCallIds, toolCallId].slice(-12)
-}
-
-function summarizeTopic(text: string, maxLength: number): string | undefined {
+function sanitizeTopic(text: string, maxLength: number): string | undefined {
   const normalized = normalizeTopicText(text)
 
   if (!normalized) {
     return undefined
   }
 
-  const withoutLeadIn = stripLeadIn(normalized)
-  const candidates = withoutLeadIn
-    .split(/[.!?\u3002\uff01\uff1f]+/)
-    .map((part) => stripLeadIn(part).trim())
-    .filter((part) => part.length >= 6)
-
-  const topic = candidates[0] ?? withoutLeadIn
+  const topic = stripLeadIn(normalized)
 
   return topic ? truncate(topic, maxLength) : undefined
 }
