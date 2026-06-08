@@ -2,7 +2,7 @@
 
 Discord Rich Presence observer plugin for Cola.
 
-<p align="center"><img width="200" src="./assets/discord-presence.webp" /></p>
+<p align="center"><img width="250" src="./assets/discord-presence.webp" /></p>
 
 It subscribes to Cola session events and publishes the current interaction state to Discord, such as:
 
