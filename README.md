@@ -1,7 +1,10 @@
 # Cola Discord Presence
 
-Discord Rich Presence observer plugin for Cola. It subscribes to Cola session
-events and publishes the current interaction state to Discord, such as:
+Discord Rich Presence observer plugin for Cola.
+
+<p align="center"><img width="200" src="./assets/discord-presence.webp" /></p>
+
+It subscribes to Cola session events and publishes the current interaction state to Discord, such as:
 
 - Available
 - Reviewing context
@@ -35,22 +38,22 @@ The built entry is `./dist/index.js`.
 The plugin reads settings from Cola plugin config first, then environment
 variables where noted.
 
-| Key                | Type    | Default                                            | Description                                                            |
-| ------------------ | ------- | -------------------------------------------------- | ---------------------------------------------------------------------- |
-| `enabled`          | boolean | `true`                                             | Disable without uninstalling.                                          |
-| `clientId`         | string  | built in                                           | Optional Discord application ID override. Can be set by plugin config, `COLA_DISCORD_CLIENT_ID`, or `DISCORD_CLIENT_ID`. |
-| `activityName`     | string  | `Cola`                                             | Activity name sent to Discord.                                         |
-| `largeImageKey`    | string  | `https://colaos.ai/apple-touch-icon.png`           | Discord application asset key or public image URL for the large image. |
-| `largeImageUrl`    | string  | none                                               | Backward-compatible alias for `largeImageKey`.                         |
-| `smallImageKey`    | string  | none                                               | Discord application asset key.                                         |
-| `smallImageUrl`    | string  | none                                               | Public image URL for the small image.                                  |
-| `largeImageText`   | string  | `Cola`                                             | Hover text for the large image.                                        |
-| `smallImageText`   | string  | `Discord Presence`                                 | Hover text for the small image.                                        |
-| `showOrigin`       | boolean | `true`                                             | Show only the origin kind, such as desktop or CLI.                     |
-| `showTopic`        | boolean | `true`                                             | Show a short model-supplied public topic. Sends that topic to Discord. |
-| `topicMaxLength`   | number  | `72`                                               | Maximum topic summary length, clamped between 20 and 120 characters.   |
-| `reconnectMs`      | number  | `15000`                                            | Retry delay when Discord is not available.                             |
-| `updateDebounceMs` | number  | `750`                                              | Minimum delay before applying presence updates.                        |
+| Key                | Type    | Default                                  | Description                                                                                                              |
+| ------------------ | ------- | ---------------------------------------- | ------------------------------------------------------------------------------------------------------------------------ |
+| `enabled`          | boolean | `true`                                   | Disable without uninstalling.                                                                                            |
+| `clientId`         | string  | built in                                 | Optional Discord application ID override. Can be set by plugin config, `COLA_DISCORD_CLIENT_ID`, or `DISCORD_CLIENT_ID`. |
+| `activityName`     | string  | `Cola`                                   | Activity name sent to Discord.                                                                                           |
+| `largeImageKey`    | string  | `https://colaos.ai/apple-touch-icon.png` | Discord application asset key or public image URL for the large image.                                                   |
+| `largeImageUrl`    | string  | none                                     | Backward-compatible alias for `largeImageKey`.                                                                           |
+| `smallImageKey`    | string  | none                                     | Discord application asset key.                                                                                           |
+| `smallImageUrl`    | string  | none                                     | Public image URL for the small image.                                                                                    |
+| `largeImageText`   | string  | `Cola`                                   | Hover text for the large image.                                                                                          |
+| `smallImageText`   | string  | `Discord Presence`                       | Hover text for the small image.                                                                                          |
+| `showOrigin`       | boolean | `true`                                   | Show only the origin kind, such as desktop or CLI.                                                                       |
+| `showTopic`        | boolean | `true`                                   | Show a short model-supplied public topic. Sends that topic to Discord.                                                   |
+| `topicMaxLength`   | number  | `72`                                     | Maximum topic summary length, clamped between 20 and 120 characters.                                                     |
+| `reconnectMs`      | number  | `15000`                                  | Retry delay when Discord is not available.                                                                               |
+| `updateDebounceMs` | number  | `750`                                    | Minimum delay before applying presence updates.                                                                          |
 
 Discord Rich Presence requires the Discord desktop client to be running.
 
