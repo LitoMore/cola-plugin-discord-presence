@@ -35,13 +35,12 @@ The built entry is `./dist/index.js`.
 
 ## Configuration
 
-The plugin reads settings from Cola plugin config first, then environment
-variables where noted.
+The plugin declares its settings through Cola channel config.
 
 | Key                | Type    | Default                                  | Description                                                                                                              |
 | ------------------ | ------- | ---------------------------------------- | ------------------------------------------------------------------------------------------------------------------------ |
 | `enabled`          | boolean | `true`                                   | Disable without uninstalling.                                                                                            |
-| `clientId`         | string  | built in                                 | Optional Discord application ID override. Can be set by plugin config, `COLA_DISCORD_CLIENT_ID`, or `DISCORD_CLIENT_ID`. |
+| `clientId`         | string  | built in                                 | Optional Discord application ID override.                                                                                 |
 | `activityName`     | string  | `Cola`                                   | Activity name sent to Discord.                                                                                           |
 | `largeImageKey`    | string  | `https://colaos.ai/apple-touch-icon.png` | Discord application asset key or public image URL for the large image.                                                   |
 | `largeImageUrl`    | string  | none                                     | Backward-compatible alias for `largeImageKey`.                                                                           |

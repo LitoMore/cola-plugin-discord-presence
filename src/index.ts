@@ -1,4 +1,4 @@
-import { definePlugin } from '@marswave/cola-plugin-sdk'
+import { defineChannel, definePlugin } from '@marswave/cola-plugin-sdk'
 import type {
   PluginEventHandler,
   PluginSessionEvent,
@@ -9,7 +9,7 @@ import type {
 
 import { applyTopicUpdate, createActivity, createInitialSnapshot, reducePresenceEvent } from './activity.js'
 import type { PresenceSnapshot } from './activity.js'
-import { readPresenceConfig } from './config.js'
+import { presenceConfigSchema, readPresenceConfig } from './config.js'
 import type { PresenceConfig } from './config.js'
 import { DiscordPresence } from './discord-presence.js'
 
@@ -33,6 +33,21 @@ const EVENT_TYPES = [
 ] as const satisfies readonly PluginSessionEvent['type'][]
 
 let controller: PresenceController | undefined
+
+const discordPresenceChannel = defineChannel({
+  id: 'discord-presence',
+  meta: {
+    label: 'Discord Presence',
+    description: 'Publishes Cola interaction state to Discord Rich Presence.'
+  },
+  capabilities: {
+    receive: {},
+    send: {}
+  },
+  config: {
+    schema: presenceConfigSchema
+  }
+})
 
 const setActivityTopicTool: PluginTool = {
   name: 'set_activity_topic',
@@ -88,11 +103,7 @@ const setActivityTopicTool: PluginTool = {
 }
 
 export default definePlugin({
-  id: 'discord-presence',
-  meta: {
-    label: 'Discord Presence',
-    description: 'Publishes Cola interaction state to Discord Rich Presence.'
-  },
+  ...discordPresenceChannel,
   tools: [setActivityTopicTool],
   async start(ctx) {
     const config = readPresenceConfig(ctx.config)
