@@ -60,6 +60,30 @@ export class DiscordPresence {
     this.scheduleActivityUpdate()
   }
 
+  isConnected(): boolean {
+    return this.connected
+  }
+
+  getStatusMessage(): string {
+    if (this.connected) {
+      return 'Discord RPC connected'
+    }
+
+    if (this.connecting) {
+      return 'Connecting to Discord RPC'
+    }
+
+    if (this.stopped) {
+      return 'Discord Presence stopped'
+    }
+
+    if (this.reconnectTimer) {
+      return 'Waiting to reconnect to Discord RPC'
+    }
+
+    return 'Discord RPC disconnected'
+  }
+
   private async connect(): Promise<void> {
     if (this.stopped || this.connecting || this.connected) {
       return

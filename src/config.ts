@@ -27,9 +27,11 @@ export const presenceConfigSchema = {
   fields: [
     {
       key: 'enabled',
-      label: 'Enabled',
-      description: 'Disable Discord Presence without uninstalling the plugin.',
+      path: ['enabled'],
+      label: 'Enable plugin',
+      description: 'Start Discord Presence when Cola launches.',
       type: 'boolean',
+      required: false,
       defaultValue: true
     },
     {

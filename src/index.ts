@@ -1,5 +1,6 @@
 import { defineChannel, definePlugin } from '@marswave/cola-plugin-sdk'
 import type {
+  ChannelStatusResult,
   PluginEventHandler,
   PluginSessionEvent,
   PluginStartContext,
@@ -33,6 +34,9 @@ const EVENT_TYPES = [
 ] as const satisfies readonly PluginSessionEvent['type'][]
 
 let controller: PresenceController | undefined
+let activeConfigKey: string | undefined
+
+type PresenceRuntimeContext = Pick<PluginStartContext, 'config' | 'runtime' | 'logger' | 'abortSignal'>
 
 const discordPresenceChannel = defineChannel({
   id: 'discord-presence',
@@ -46,6 +50,17 @@ const discordPresenceChannel = defineChannel({
   },
   config: {
     schema: presenceConfigSchema
+  },
+  gateway: {
+    async start(ctx) {
+      await startPresence(ctx)
+    },
+    async stop() {
+      await stopPresence()
+    },
+    getStatus(ctx): ChannelStatusResult {
+      return getPresenceStatus(ctx.config)
+    }
   }
 })
 
@@ -106,22 +121,59 @@ export default definePlugin({
   ...discordPresenceChannel,
   tools: [setActivityTopicTool],
   async start(ctx) {
-    const config = readPresenceConfig(ctx.config)
-
-    if (!config.enabled) {
-      ctx.logger.info('Discord Presence plugin is disabled.')
-      return
-    }
-
-    await controller?.stop()
-    controller = new PresenceController(config)
-    await controller.start(ctx)
+    await startPresence(ctx)
   },
   async stop() {
-    await controller?.stop()
-    controller = undefined
+    await stopPresence()
   }
 })
+
+async function startPresence(ctx: PresenceRuntimeContext): Promise<void> {
+  const config = readPresenceConfig(ctx.config)
+  const configKey = JSON.stringify(config)
+
+  if (!config.enabled) {
+    await stopPresence()
+    ctx.logger.info('Discord Presence plugin is disabled.')
+    return
+  }
+
+  if (controller && activeConfigKey === configKey) {
+    return
+  }
+
+  await stopPresence()
+
+  controller = new PresenceController(config)
+  activeConfigKey = configKey
+  await controller.start(ctx)
+}
+
+async function stopPresence(): Promise<void> {
+  activeConfigKey = undefined
+  await controller?.stop()
+  controller = undefined
+}
+
+function getPresenceStatus(configInput: Readonly<Record<string, unknown>>): ChannelStatusResult {
+  const config = readPresenceConfig(configInput)
+
+  if (!config.enabled) {
+    return {
+      connected: false,
+      configured: true,
+      message: 'Plugin disabled'
+    }
+  }
+
+  const connected = controller?.isConnected() ?? false
+
+  return {
+    connected,
+    configured: true,
+    message: controller?.getStatusMessage() ?? 'Discord Presence is not running'
+  }
+}
 
 class PresenceController {
   private snapshot: PresenceSnapshot = createInitialSnapshot()
@@ -152,6 +204,14 @@ class PresenceController {
     )
 
     this.presence.start()
+  }
+
+  isConnected(): boolean {
+    return this.presence?.isConnected() ?? false
+  }
+
+  getStatusMessage(): string {
+    return this.presence?.getStatusMessage() ?? 'Discord Presence stopped'
   }
 
   async stop(): Promise<void> {
