@@ -26,7 +26,7 @@ export type PresenceSnapshot = {
 
 export type PresenceTopicUpdate = {
   sessionId?: SessionId
-  scopeKey: string
+  scopeKey?: string
   topic: string
 }
 

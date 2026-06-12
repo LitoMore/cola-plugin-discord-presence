@@ -99,7 +99,7 @@ export const presenceConfigSchema = {
     {
       key: 'showTopic',
       label: 'Show topic',
-      description: 'Show the short model-supplied public topic in Discord.',
+      description: 'Show the short model-generated public topic in Discord.',
       type: 'boolean',
       defaultValue: true
     },

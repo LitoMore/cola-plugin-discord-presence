@@ -32,7 +32,7 @@
     "node": ">=20"
   },
   "dependencies": {
-    "@marswave/cola-plugin-sdk": "^0.0.3",
+    "@marswave/cola-plugin-sdk": "^0.0.4",
     "@xhayper/discord-rpc": "^1.3.4"
   },
   "devDependencies": {
@@ -43,7 +43,7 @@
     "plugin": {
       "id": "discord-presence",
       "entry": "./dist/index.js",
-      "minSdkVersion": "0.0.3"
+      "minSdkVersion": "0.0.4"
     },
     "channel": {
       "label": "Discord Presence",

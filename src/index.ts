@@ -2,10 +2,10 @@ import { defineChannel, definePlugin } from '@marswave/cola-plugin-sdk'
 import type {
   ChannelStatusResult,
   PluginEventHandler,
+  PluginLlm,
+  PluginLogger,
   PluginSessionEvent,
-  PluginStartContext,
-  PluginTool,
-  PluginToolContext
+  PluginStartContext
 } from '@marswave/cola-plugin-sdk'
 
 import { applyTopicUpdate, createActivity, createInitialSnapshot, reducePresenceEvent } from './activity.js'
@@ -37,6 +37,19 @@ let controller: PresenceController | undefined
 let activeConfigKey: string | undefined
 
 type PresenceRuntimeContext = Pick<PluginStartContext, 'config' | 'runtime' | 'logger' | 'abortSignal'>
+type GeneratedTopic = {
+  topic?: unknown
+}
+
+const TOPIC_SOURCE_MAX_LENGTH = 4_000
+const TOPIC_GENERATION_TIMEOUT_MS = 15_000
+const TOPIC_GENERATION_SYSTEM_PROMPT = [
+  'Create a short public Discord Rich Presence topic from the assistant response.',
+  'Use a natural 2-6 word noun phrase.',
+  'Do not quote private user text.',
+  'Do not include secrets, credentials, personal data, file paths, exact prompts, or sensitive details.',
+  'If the response is sensitive, vague, or mostly code/log output, use a broad safe category.'
+].join(' ')
 
 const discordPresenceChannel = defineChannel({
   id: 'discord-presence',
@@ -64,62 +77,8 @@ const discordPresenceChannel = defineChannel({
   }
 })
 
-const setActivityTopicTool: PluginTool = {
-  name: 'set_activity_topic',
-  label: 'Set Discord activity topic',
-  description:
-    'Update Discord Rich Presence with a short, natural public topic for the current Cola conversation. Call this whenever the user intent is clear or the topic changes.',
-  parameters: {
-    type: 'object',
-    additionalProperties: false,
-    properties: {
-      topic: {
-        type: 'string',
-        minLength: 2,
-        maxLength: 120,
-        description:
-          'A concise public topic, not a quote from the conversation. Keep it natural, neutral, and safe for Discord presence.'
-      }
-    },
-    required: ['topic']
-  },
-  promptSnippet:
-    'set_activity_topic: keep Discord Rich Presence updated with a concise public topic for the current conversation.',
-  promptGuidelines: [
-    'Call set_activity_topic once the user intent is clear, preferably before or early in your response. Call it again when the topic changes meaningfully.',
-    'Do not quote private user text. Do not include secrets, credentials, personal data, file paths, exact prompts, or sensitive details.',
-    'Use a natural 2-6 word noun phrase such as "Discord presence topics" or "Plugin build debugging"; avoid full sentences and prefixes like "Topic:".',
-    'Do not mention the presence update to the user unless they ask about Discord Presence.'
-  ],
-  async execute(input: unknown, ctx: PluginToolContext) {
-    const topic = readToolTopic(input)
-
-    if (!topic) {
-      return {
-        content: [{ type: 'text', text: 'No topic was provided.' }],
-        isError: true
-      }
-    }
-
-    if (!controller) {
-      return {
-        content: [{ type: 'text', text: 'Discord Presence is not running.' }],
-        isError: true
-      }
-    }
-
-    controller.setTopic(topic, ctx)
-
-    return {
-      content: [{ type: 'text', text: 'Discord activity topic updated.' }],
-      details: { topic }
-    }
-  }
-}
-
 export default definePlugin({
   ...discordPresenceChannel,
-  tools: [setActivityTopicTool],
   async start(ctx) {
     await startPresence(ctx)
   },
@@ -179,10 +138,18 @@ class PresenceController {
   private snapshot: PresenceSnapshot = createInitialSnapshot()
   private presence: DiscordPresence | undefined
   private unsubscribers: Array<() => void> = []
+  private llm: PluginLlm | undefined
+  private logger: PluginLogger | undefined
+  private topicGenerationId = 0
+  private stopped = true
+  private topicWarningShown = false
 
   constructor(private readonly config: PresenceConfig) {}
 
   async start(ctx: PluginStartContext): Promise<void> {
+    this.llm = ctx.runtime.llm
+    this.logger = ctx.logger
+    this.stopped = false
     this.presence = new DiscordPresence(this.config, ctx.logger)
     this.presence.setActivity(createActivity(this.snapshot, this.config))
 
@@ -215,39 +182,110 @@ class PresenceController {
   }
 
   async stop(): Promise<void> {
+    this.stopped = true
+    this.topicGenerationId += 1
+
     for (const unsubscribe of this.unsubscribers.splice(0)) {
       unsubscribe()
     }
 
     await this.presence?.stop()
     this.presence = undefined
-  }
-
-  setTopic(topic: string, ctx: PluginToolContext): void {
-    this.snapshot = applyTopicUpdate(
-      this.snapshot,
-      {
-        sessionId: ctx.sessionId,
-        scopeKey: ctx.scopeKey,
-        topic
-      },
-      this.config
-    )
-    this.presence?.setActivity(createActivity(this.snapshot, this.config))
+    this.logger = undefined
   }
 
   private readonly handleEvent = (event: PluginSessionEvent): void => {
     this.snapshot = reducePresenceEvent(this.snapshot, event, this.config)
     this.presence?.setActivity(createActivity(this.snapshot, this.config))
+
+    if (event.type === 'turn:start') {
+      this.topicGenerationId += 1
+    }
+
+    if (event.type === 'message:end') {
+      void this.generateTopicFromMessage(event)
+    }
+  }
+
+  private async generateTopicFromMessage(
+    event: Extract<PluginSessionEvent, { type: 'message:end' }>
+  ): Promise<void> {
+    if (!this.config.showTopic || !this.llm || !event.text.trim()) {
+      return
+    }
+
+    const generationId = ++this.topicGenerationId
+
+    try {
+      const result = await this.llm.generateObject<GeneratedTopic>(
+        topicPromptForMessage(event.text),
+        topicSchema(this.config.topicMaxLength),
+        {
+          systemPrompt: TOPIC_GENERATION_SYSTEM_PROMPT,
+          timeoutMs: TOPIC_GENERATION_TIMEOUT_MS
+        }
+      )
+      const topic = readGeneratedTopic(result)
+
+      if (
+        !topic ||
+        this.stopped ||
+        generationId !== this.topicGenerationId ||
+        !isCurrentSession(this.snapshot, event.sessionId)
+      ) {
+        return
+      }
+
+      this.snapshot = applyTopicUpdate(
+        this.snapshot,
+        {
+          sessionId: event.sessionId,
+          topic
+        },
+        this.config
+      )
+      this.presence?.setActivity(createActivity(this.snapshot, this.config))
+    } catch (error) {
+      if (!this.topicWarningShown) {
+        this.topicWarningShown = true
+        this.logger?.warn('Failed to generate Discord activity topic.', error)
+      }
+    }
   }
 }
 
-function readToolTopic(input: unknown): string | undefined {
-  if (!input || typeof input !== 'object') {
-    return undefined
+function topicSchema(maxLength: number): Record<string, unknown> {
+  return {
+    type: 'object',
+    additionalProperties: false,
+    properties: {
+      topic: {
+        type: 'string',
+        minLength: 2,
+        maxLength: Math.trunc(maxLength),
+        description: 'A concise public Discord presence topic.'
+      }
+    },
+    required: ['topic']
   }
+}
 
-  const topic = (input as { topic?: unknown }).topic
+function topicPromptForMessage(text: string): string {
+  return `Assistant response:\n${truncateForPrompt(text, TOPIC_SOURCE_MAX_LENGTH)}`
+}
 
-  return typeof topic === 'string' && topic.trim().length > 0 ? topic : undefined
+function readGeneratedTopic(result: GeneratedTopic): string | undefined {
+  return typeof result.topic === 'string' && result.topic.trim().length > 0 ? result.topic : undefined
+}
+
+function truncateForPrompt(text: string, maxLength: number): string {
+  return text.length <= maxLength ? text : `${text.slice(0, maxLength)}...`
+}
+
+function isCurrentSession(snapshot: PresenceSnapshot, sessionId: PluginSessionEvent['sessionId']): boolean {
+  return Boolean(
+    snapshot.sessionId &&
+      snapshot.sessionId.length === sessionId.length &&
+      snapshot.sessionId.every((part, index) => part === sessionId[index])
+  )
 }
