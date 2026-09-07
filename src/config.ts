@@ -4,6 +4,7 @@ export type PresenceConfig = {
   enabled: boolean
   clientId: string
   activityName: string
+  showActivityInName: boolean
   largeImageKey?: string
   largeImageUrl?: string
   smallImageKey?: string
@@ -45,9 +46,16 @@ export const presenceConfigSchema = {
     {
       key: 'activityName',
       label: 'Activity name',
-      description: 'Activity name sent to Discord.',
+      description: 'Activity name prefix. Leave empty to show only the summary when enabled; falls back to Cola while idle or when no summary is available.',
       type: 'text',
       defaultValue: 'Cola'
+    },
+    {
+      key: 'showActivityInName',
+      label: 'Show current activity in name',
+      description: 'Append the activity phrase to Activity name, for example Cola - Discussing favourite video games. Uses Activity name while idle or when no topic is available.',
+      type: 'boolean',
+      defaultValue: true
     },
     {
       key: 'largeImageKey',
@@ -99,7 +107,7 @@ export const presenceConfigSchema = {
     {
       key: 'showTopic',
       label: 'Show topic',
-      description: 'Show the short model-generated public topic in Discord.',
+      description: 'Show a short model-generated activity phrase describing what you and Cola are doing together.',
       type: 'boolean',
       defaultValue: true
     },
@@ -132,7 +140,8 @@ export function readPresenceConfig(config: Readonly<Record<string, unknown>>): P
     enabled: getBoolean(config, 'enabled', true),
     clientId:
       getString(config, 'clientId') ?? getString(config, 'discordClientId') ?? DEFAULT_CLIENT_ID,
-    activityName: getString(config, 'activityName') ?? 'Cola',
+    activityName: typeof config.activityName === 'string' ? config.activityName.trim() : 'Cola',
+    showActivityInName: getBoolean(config, 'showActivityInName', true),
     largeImageKey: getString(config, 'largeImageKey') ?? getString(config, 'largeImageUrl') ?? DEFAULT_LARGE_IMAGE_URL,
     largeImageUrl: undefined,
     smallImageKey: getString(config, 'smallImageKey') ?? undefined,

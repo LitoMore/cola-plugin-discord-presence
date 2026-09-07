@@ -39,16 +39,25 @@ let activeConfigKey: string | undefined
 type PresenceRuntimeContext = Pick<PluginStartContext, 'config' | 'runtime' | 'logger' | 'abortSignal'>
 type GeneratedTopic = {
   topic?: unknown
+  subtitle?: unknown
 }
 
 const TOPIC_SOURCE_MAX_LENGTH = 4_000
 const TOPIC_GENERATION_TIMEOUT_MS = 15_000
 const TOPIC_GENERATION_SYSTEM_PROMPT = [
-  'Create a short public Discord Rich Presence topic from the assistant response.',
-  'Use a natural 2-6 word noun phrase.',
+  'Create a short public Discord Rich Presence activity phrase from the assistant response.',
+  'Describe what the user and Cola are doing together so other people can understand the activity at a glance.',
+  'Use a natural 3-8 word English phrase beginning with an -ing action verb, such as Discussing, Debugging, Planning, or Exploring.',
+  'Examples: Discussing favourite video games; Debugging a Discord plugin; Planning a weekend trip.',
+  'Choose an action supported by the response. Do not invent actions or imply work was performed when it was only discussed.',
+  'Return only the activity phrase in the topic field, without a subject, application name, brackets, quotation marks, or trailing punctuation.',
+  'Also generate a short English subtitle of 3-10 words adding a useful focus, goal, or angle supported by the response.',
+  'The subtitle will appear below the activity name. Complement the topic; do not repeat or paraphrase it, and do not invent facts or progress.',
+  'Example pair: topic Discussing favourite video games; subtitle Storytelling, exploration, and memorable worlds.',
+  'Use plain text without quotation marks or trailing punctuation. If there is no distinct safe detail, return an empty subtitle.',
   'Do not quote private user text.',
-  'Do not include secrets, credentials, personal data, file paths, exact prompts, or sensitive details.',
-  'If the response is sensitive, vague, or mostly code/log output, use a broad safe category.'
+  'Neither field may include secrets, credentials, personal data, file paths, exact prompts, or sensitive details.',
+  'If the response is sensitive, vague, or mostly code/log output, use a broad safe activity phrase such as Exploring ideas together.'
 ].join(' ')
 
 const discordPresenceChannel = defineChannel({
@@ -240,7 +249,8 @@ class PresenceController {
         this.snapshot,
         {
           sessionId: event.sessionId,
-          topic
+          topic,
+          subtitle: typeof result.subtitle === 'string' ? result.subtitle : undefined
         },
         this.config
       )
@@ -263,10 +273,15 @@ function topicSchema(maxLength: number): Record<string, unknown> {
         type: 'string',
         minLength: 2,
         maxLength: Math.trunc(maxLength),
-        description: 'A concise public Discord presence topic.'
+        description: 'A concise public activity phrase starting with an -ing verb that describes what the user and Cola are doing together.'
+      },
+      subtitle: {
+        type: 'string',
+        maxLength: Math.trunc(maxLength),
+        description: 'A short public focus or goal that complements the topic without repeating it. Empty if no distinct safe detail is available.'
       }
     },
-    required: ['topic']
+    required: ['topic', 'subtitle']
   }
 }
 

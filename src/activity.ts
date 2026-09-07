@@ -21,6 +21,7 @@ export type PresenceSnapshot = {
   lastToolName?: string
   lastToolErrored?: boolean
   recentTopic?: string
+  recentSubtitle?: string
   startedAt: number
 }
 
@@ -28,6 +29,7 @@ export type PresenceTopicUpdate = {
   sessionId?: SessionId
   scopeKey?: string
   topic: string
+  subtitle?: string
 }
 
 export function createInitialSnapshot(): PresenceSnapshot {
@@ -47,6 +49,7 @@ export function reducePresenceEvent(
     sessionId: event.sessionId,
     origin: event.origin,
     recentTopic: config.showTopic && sameSession ? snapshot.recentTopic : undefined,
+    recentSubtitle: config.showTopic && sameSession ? snapshot.recentSubtitle : undefined,
     lastToolName: sameSession ? snapshot.lastToolName : undefined,
     lastToolErrored: sameSession ? snapshot.lastToolErrored : undefined,
     startedAt: sameSession && snapshot.phase !== 'idle' ? snapshot.startedAt : Date.now()
@@ -119,31 +122,38 @@ export function applyTopicUpdate(
     return snapshot
   }
 
+  const subtitle = update.subtitle ? sanitizeTopic(update.subtitle, config.topicMaxLength) : undefined
+  const recentSubtitle = subtitle?.toLowerCase() === topic.toLowerCase() ? undefined : subtitle
+
   if (snapshot.sessionId && update.sessionId && isSameSession(snapshot.sessionId, update.sessionId)) {
     return {
       ...snapshot,
-      recentTopic: topic
+      recentTopic: topic,
+      recentSubtitle
     }
   }
 
   if (!snapshot.sessionId && snapshot.origin?.kind === 'desktop' && update.scopeKey === 'desktop:local') {
     return {
       ...snapshot,
-      recentTopic: topic
+      recentTopic: topic,
+      recentSubtitle
     }
   }
 
   return {
     ...snapshot,
-    recentTopic: topic
+    recentTopic: topic,
+    recentSubtitle
   }
 }
 
 export function createActivity(snapshot: PresenceSnapshot, config: PresenceConfig): SetActivity {
   return pruneUndefined({
-    name: truncate(config.activityName, 128),
+    name: truncate(nameForSnapshot(snapshot, config), 128),
     details: truncate(detailsForSnapshot(snapshot), 128),
     state: truncate(stateForSnapshot(snapshot, config), 128),
+    buttons: [{ label: 'Get Cola', url: 'https://cola.app' }],
     startTimestamp: new Date(snapshot.startedAt),
     largeImageKey: config.largeImageKey,
     largeImageUrl: config.largeImageUrl,
@@ -154,6 +164,14 @@ export function createActivity(snapshot: PresenceSnapshot, config: PresenceConfi
     smallImageText:
       config.smallImageKey || config.smallImageUrl ? truncate(config.smallImageText, 128) : undefined
   })
+}
+
+function nameForSnapshot(snapshot: PresenceSnapshot, config: PresenceConfig): string {
+  if (!config.showActivityInName || snapshot.phase === 'idle' || !config.showTopic || !snapshot.recentTopic) {
+    return config.activityName || 'Cola'
+  }
+
+  return config.activityName ? `${config.activityName} - ${snapshot.recentTopic}` : snapshot.recentTopic
 }
 
 function detailsForSnapshot(snapshot: PresenceSnapshot): string {
@@ -179,7 +197,13 @@ function detailsForSnapshot(snapshot: PresenceSnapshot): string {
 
 function stateForSnapshot(snapshot: PresenceSnapshot, config: PresenceConfig): string {
   if (config.showTopic && snapshot.recentTopic) {
-    return snapshot.recentTopic
+    if (!config.showActivityInName || snapshot.phase === 'idle') {
+      return snapshot.recentTopic
+    }
+
+    if (snapshot.recentSubtitle) {
+      return snapshot.recentSubtitle
+    }
   }
 
   if (config.showOrigin && snapshot.origin) {
