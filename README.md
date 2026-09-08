@@ -56,6 +56,7 @@ The plugin declares its settings through Cola channel config.
 | `smallImageText`     | string  | `Discord Presence`                       | Hover text for the small image.                                                      |
 | `showOrigin`         | boolean | `true`                                   | Show only the origin kind, such as desktop or CLI.                                   |
 | `showTopic`          | boolean | `true`                                   | Show a short model-generated public activity phrase. Sends that phrase to Discord. |
+| `customPrompt`       | string  | none                                     | Personalize the language, tone, and style of generated activity phrases and subtitles. |
 | `topicMaxLength`     | number  | `72`                                     | Maximum topic summary length, clamped between 20 and 120 characters.                 |
 | `reconnectMs`        | number  | `15000`                                  | Retry delay when Discord is not available.                                           |
 | `updateDebounceMs`   | number  | `750`                                    | Minimum delay before applying presence updates.                                      |
@@ -75,6 +76,14 @@ name falls back to `Cola` while idle, when no summary is available, or when
 **Show current activity in name** is disabled. The profile card details and state remain available.
 
 ## Topic Summaries
+
+Set **Custom prompt** (`customPrompt`) to personalize both the activity phrase
+and subtitle, for example `Write in Chinese with a playful tone` or
+`Use a calm, minimalist style and focus on the goal`. These preferences can
+override the default English wording and phrasing style; the output format,
+character limits, factual accuracy, and privacy rules still apply. Leave it
+empty to use the default style. This setting applies to future summaries and
+requires **Show topic** to be enabled.
 
 When an assistant message finishes, the plugin asks Cola's configured primary
 model to generate a concise public activity phrase describing what you and Cola

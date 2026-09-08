@@ -13,6 +13,7 @@ export type PresenceConfig = {
   smallImageText: string
   showOrigin: boolean
   showTopic: boolean
+  customPrompt?: string
   topicMaxLength: number
   reconnectMs: number
   updateDebounceMs: number
@@ -112,6 +113,13 @@ export const presenceConfigSchema = {
       defaultValue: true
     },
     {
+      key: 'customPrompt',
+      label: 'Custom prompt',
+      description: 'Personalize the language, tone, and style of generated activity phrases and subtitles. Leave empty for the default style. Applies when Show topic is enabled.',
+      placeholder: 'Write in Chinese with a playful tone.',
+      type: 'text'
+    },
+    {
       key: 'topicMaxLength',
       label: 'Topic max length',
       description: 'Maximum topic summary length, clamped between 20 and 120 characters.',
@@ -150,6 +158,7 @@ export function readPresenceConfig(config: Readonly<Record<string, unknown>>): P
     smallImageText: getString(config, 'smallImageText') ?? 'Discord Presence',
     showOrigin: getBoolean(config, 'showOrigin', true),
     showTopic: getBoolean(config, 'showTopic', true),
+    customPrompt: getString(config, 'customPrompt') ?? undefined,
     topicMaxLength: getNumber(config, 'topicMaxLength', DEFAULT_TOPIC_MAX_LENGTH, 20, 120),
     reconnectMs: getNumber(config, 'reconnectMs', DEFAULT_RECONNECT_MS, 1_000, 300_000),
     updateDebounceMs: getNumber(config, 'updateDebounceMs', DEFAULT_UPDATE_DEBOUNCE_MS, 0, 30_000)
